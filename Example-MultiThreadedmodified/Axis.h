@@ -29,6 +29,7 @@
 #include <condition_variable>
 #include <mutex>
 #include "pubSysCls.h"
+#include <vector>
 using namespace sFnd;
 using namespace std;
 /* 																	   !end!*
@@ -81,14 +82,17 @@ private:
 	StateEnum m_lastState;
 
 	// Move information
-    mgMoveProfiledInfo m_move;
+/*     mgMoveProfiledInfo m_move;
 	mgMoveProfiledInfo m_move1;  // First move
     mgMoveProfiledInfo m_move2;  // Second move
 	mgMoveProfiledInfo m_move3;  // Third move
+ */
+	std::vector<mgMoveProfiledInfo> m_moveList;  // Holds a sequence of trajectory moves
 
 
 	::uint32_t m_moveCount;
 	::int32_t m_moveTimeoutMs;
+	double m_countsPerRev = 6400;
 
 	bool m_quitting;			// Axis quitting
 
@@ -145,8 +149,10 @@ public:
 	//	m_node->Motion.Adv.HeadDistance = m_move.value/4;
 	//	m_node->Motion.Adv.TailDistance = m_move.value/4;
 	//}////////////////////////////////////////////////////////////////////////////
-	void SetThreeMoves(int32_t move1Counts, int32_t move2Counts, int32_t move3Counts);
-	
+	//void SetThreeMoves(int32_t move1Counts, int32_t move2Counts, int32_t move3Counts);
+	// Set a full trajectory of N moves
+	void SetTrajectoryMoves(const std::vector<int32_t>& moveCounts);
+
 	void Move();
 	// Execute both moves sequentially
     //void ExecuteThreeMoves();

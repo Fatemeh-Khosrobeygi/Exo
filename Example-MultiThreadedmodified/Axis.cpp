@@ -43,6 +43,7 @@
 Axis::Axis(INode *node) : 
 	m_node(node), 
 	m_moveCount(0), 
+	m_countsPerRev(6400.0),
 	m_quitting(false) {
 
 	// Save the config file before starting
@@ -142,8 +143,8 @@ void Axis::Enable(){
 		attnReq.cpm.Ready = 0;
 		attnReq.cpm.WasHomed = 1;
 
-		m_node->Adv.Attn.ClearAttn(attnReq);
-/* 		//If node is set up to home, start homing
+/* 		m_node->Adv.Attn.ClearAttn(attnReq);
+		//If node is set up to home, start homing
 		if (m_node->Motion.Homing.HomingValid()) {
 			m_node->Motion.Homing.Initiate();
 
@@ -211,26 +212,30 @@ void Axis::InitMotionParams() {
 
     // Set motion limits
     m_node->Motion.VelLimit = VEL_LIM_RPM;
-    m_node->Motion.AccLimit = ACC_LIM_RPM_PER_SEC;
+    //m_node->Motion.AccLimit = ACC_LIM_RPM_PER_SEC;
     m_node->Motion.JrkLimit = RAS_CODE;
     m_node->Limits.PosnTrackingLimit.Value(TRACKING_LIM);
     m_node->Limits.TrqGlobal.Value(TRQ_PCT);
 
-	int32_t longestMove = std::max(
+/* 	int32_t longestMove = std::max(
 		std::max(std::abs(m_move1.value), std::abs(m_move2.value)),
 		std::abs(m_move3.value)
-    );
+    ); */
+
+	//int32_t TotalMoveTime = m_move1.value+ m_move2.value+ m_move3.value;
 
     _mgPosnStyle theStyle(MG_MOVE_STYLE_NORM_TRIG);  // Assuming your moves are of this type
 
-    int32_t moveDuration = (int32_t)m_node->Motion.Adv.MovePosnDurationMsec(
-        longestMove, theStyle.fld.relative == 0
-    );
+    m_moveTimeoutMs = 20;  // base time buffer
 
-    m_moveTimeoutMs = moveDuration + 20;
+    for (const auto& move : m_moveList) {
+        int32_t moveDuration = (int32_t)m_node->Motion.Adv.MovePosnDurationMsec(
+            move.value, theStyle.fld.relative == 0
+        );
+        m_moveTimeoutMs += moveDuration;
+    }
 
-    // Debug print
-    // printf("Axis [%d] Max move duration = %d ms\n", m_node->Info.Ex.Addr(), m_moveTimeoutMs);
+    printf("Total move timeout estimated: %d ms\n", m_moveTimeoutMs);
 }
 
 //																			   *
@@ -279,7 +284,7 @@ void Axis::InitMotionParams() {
 } */
 //	
 
-void Axis::SetThreeMoves(int32_t move1Counts, int32_t move2Counts, int32_t move3Counts) {
+/* void Axis::SetThreeMoves(int32_t move1Counts, int32_t move2Counts, int32_t move3Counts) {
     m_move1.type = MG_MOVE_STYLE_NORM;
     m_move1.value = move1Counts;
 
@@ -291,9 +296,23 @@ void Axis::SetThreeMoves(int32_t move1Counts, int32_t move2Counts, int32_t move3
 
     printf("[Hip motor 1] Move1 = %d, Move2 = %d, Move3 = %d\n", 
         m_move1.value, m_move2.value, m_move3.value);
+} */
+
+
+void Axis::SetTrajectoryMoves(const std::vector<int32_t>& moveCounts) {
+    m_moveList.clear();  // clear previous trajectory
+
+    for (auto count : moveCounts) {
+        mgMoveProfiledInfo move;
+        move.type = MG_MOVE_STYLE_NORM;
+        move.value = count;
+        m_moveList.push_back(move);
+    }
+
+    printf("SetTrajectoryMoves: %zu moves loaded.\n", m_moveList.size());
 }
 
-void Axis::Move() {
+/* void Axis::Move() {
     // Clear any lingering attention signals
     attnReg attnMask;
     attnMask.cpm.MoveDone = 1;
@@ -302,14 +321,17 @@ void Axis::Move() {
     m_node->Adv.Attn.ClearAttn(attnMask);
 
     // Execute the moves in sequence
+	m_node->Motion.AccLimit = 500;
     m_node->Motion.Adv.MovePosnStart(m_move1.value, true, false, false);
 	std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 	printf("salam1");
 	//while (!m_node->Motion.MoveIsDone()) {}
+	m_node->Motion.AccLimit = 100;
     m_node->Motion.Adv.MovePosnStart(m_move2.value, true, false, false);
 	std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 	printf("salam2");
 	//while (!m_node->Motion.MoveIsDone()) {}
+	m_node->Motion.AccLimit = 100;
     m_node->Motion.Adv.MovePosnStart(m_move3.value, true, false, false);
 	std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 	printf("salam3");
@@ -319,9 +341,49 @@ void Axis::Move() {
         m_move1.value, m_move2.value, m_move3.value);
 
     m_moveCount += 3;
-}
+
+	
+
+ */
+	///////////////////////////////////////////////////////////////////////////////////////
+/* 	attnReg attnReq;
+	m_node->Adv.Attn.ClearAttn(attnReq);
+	//If node is set up to home, start homing
+	if (m_node->Motion.Homing.HomingValid()) {
+		m_node->Motion.Homing.Initiate();
+
+			attnReg theAttn = m_node->Adv.Attn.WaitForAttn(attnReq, 30000);
+			if (!theAttn.cpm.WasHomed) {
+				mnErr eInfo;
+				eInfo.ErrorCode = MN_ERR_TIMEOUT;
+				eInfo.TheAddr = m_node->Info.Ex.Addr();
+				snprintf(eInfo.ErrorMsg, sizeof(eInfo.ErrorMsg),
+					"Error: Timed out waiting for home\n");
+				throw eInfo;
+			}
+	} */
+
 
 //
+void Axis::Move() {
+    attnReg attnMask;
+    attnMask.cpm.MoveDone = 1;
+    attnMask.cpm.Disabled = 1;
+    attnMask.cpm.NotReady = 1;
+    m_node->Adv.Attn.ClearAttn(attnMask);
+
+    for (size_t i = 0; i < m_moveList.size(); ++i) {
+        const auto& move = m_moveList[i];
+        printf("[Hip motor] Executing Move %zu to %d counts\n", i+1, move.value);
+        
+        m_node->Motion.Adv.MovePosnStart(move.value, true, false, false);
+
+        // Optionally, wait or delay between moves:
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));  // or use WaitForMove(...)
+    }
+
+    m_moveCount += static_cast<int>(m_moveList.size());
+}
 
 
 
@@ -350,7 +412,8 @@ void Axis::Move() {
 //	DESCRIPTION:
 //		Wait for attention that move has completed
 //
-bool Axis::WaitForMove(::int32_t timeoutMs){
+//it was timeoutMs instead of m_moveTimeoutMs
+bool Axis::WaitForMove(::int32_t m_moveTimeoutMs){
 	if (m_node == NULL){
 		return false;
 	}
@@ -359,7 +422,7 @@ bool Axis::WaitForMove(::int32_t timeoutMs){
 	attnMask.cpm.MoveDone = 1;
 	attnMask.cpm.Disabled = 1;
 	attnMask.cpm.NotReady = 1;
-	attnSeen = m_node->Adv.Attn.WaitForAttn(attnMask, timeoutMs, false);
+	attnSeen = m_node->Adv.Attn.WaitForAttn(attnMask, m_moveTimeoutMs, false);
 	//printf("  End move axis %d: %f\n", m_node->Info.Ex.Addr(), infcCoreTime());
 	if (attnSeen.cpm.Disabled){
 		printf("  ERROR: [%d] disabled during move\n", m_node->Info.Ex.Addr());

@@ -5,6 +5,13 @@
 #include <iostream>
 #include "Axis.h"
 #include "Supervisor.h"
+#include "TrajectoryLoader.h"
+#include "TrajectoryLoader.h"
+
+std::string filePath = "/home/smplab/exoskeleton/Linux_Software/sFoundation/SDK_Examples/Example-MultiThreadedmodified/gait_data.csv";  // Update this with actual path
+std::vector<FullBodyTrajectoryPoint> trajectoryPoints = TrajectoryLoader::LoadFromCSV(filePath);
+std::vector<double> leftHipAnglesDeg;
+
 
 // Send message and wait for newline
 void msgUser(const char *msg) {
@@ -34,6 +41,16 @@ void MN_DECL AttentionDetected(const mnAttnReqReg &detected)
 		detected.MultiAddr >> 4, detected.MultiAddr, attnStringBuf);
 }
 
+
+
+
+//Constants 
+constexpr double HIP_COUNTS_PER_DEG   = (6400.0 * 100.0) / 360.0; // 1777.78
+constexpr double KNEE_COUNTS_PER_DEG  = (6400.0 *  80.0) / 360.0; // 1422.22
+constexpr double ANKLE_COUNTS_PER_DEG = (6400.0 *  50.0) / 360.0; // 888.89
+//long rightHipposCounts  = static_cast<long>(point.rightHip.angle        * HIP_COUNTS_PER_DEG);
+//long rightHipvelCounts  = static_cast<long>(point.rightHip.velocity     * HIP_COUNTS_PER_DEG);
+//long rightHipaccCounts  = static_cast<long>(point.rightHip.acceleration * HIP_COUNTS_PER_DEG);
 
 #if _MSC_VER
 #pragma warning(disable:4996)
@@ -132,19 +149,26 @@ int main(int argc, char* argv[])
 						accessLvlsGood = false;
 					}
 					else {
-						//changes in these numbers is not making any difference 
-						int32_t move1Counts = 3000;
-                        int32_t move2Counts = 500;
-                        int32_t move3Counts = 3000;  // Third move is reverse direction
-                        printf("Calling SetThreeMoves...\n");
-						listOfAxes.at(iNode)->SetThreeMoves(move1Counts, move2Counts, move3Counts);
+
+						std::vector<double> hipAnglesDeg;
+
+						for (const auto& point : trajectoryPoints) {
+							hipAnglesDeg.push_back(point.leftHip.angle);
+						}
+
+						std::vector<int32_t> gaitTrajectory;
+						for (double angleDeg : hipAnglesDeg) {
+							gaitTrajectory.push_back(static_cast<int32_t>(angleDeg * HIP_COUNTS_PER_DEG));
+						}
+
+						listOfAxes.at(iNode)->SetTrajectoryMoves(gaitTrajectory);
 
 						// Set the move distance based on where it is in the network
 						
 						//listOfAxes.at(iNode)->SetMoveRevs((iNode + 1) * 2);
 						//listOfAxes.at(iNode)->SetMoveRevs((iNode + 1) * 2);////////////////////
 						// Set the trigger group indicator
-						theNode.Motion.Adv.TriggerGroup(3);////////////////////////
+						theNode.Motion.Adv.TriggerGroup(1);////////////////////////
 					}
 				}
 
